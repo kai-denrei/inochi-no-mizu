@@ -578,7 +578,7 @@ function updateFalling() {
       makeSplash(f.toX, f.toY, f.size);
       return false;
     }
-    f.mesh.material.uniforms.uTime.value = now * 0.001;
+    f.mesh.material.uniforms.uTime.value = now * 0.0004;
     // realm morph based on y position in void
     const yProgress = (VOID_TOP - f.mesh.position.y) / (VOID_TOP - VOID_BOTTOM);
     f.mesh.material.uniforms.uRealm.value = Math.max(0, Math.min(1, yProgress));
@@ -684,7 +684,7 @@ function updateDrops(dt) {
     }
 
     d.mesh.position.set(d.x, d.y, 0);
-    d.mesh.material.uniforms.uTime.value = now * 0.001;
+    d.mesh.material.uniforms.uTime.value = now * 0.0004;
     d.mesh.material.uniforms.uAlpha.value = d.alpha;
     d.mesh.material.uniforms.uRealm.value = 0.0;  // upper realm = full DMT
   }
@@ -808,8 +808,8 @@ function frame(now) {
     updateFalling();
     updateSplashes();
   }
-  auroraMat.uniforms.uTime.value = now * 0.001;
-  moteMat.uniforms.uTime.value = now * 0.001;
+  auroraMat.uniforms.uTime.value = now * 0.0004;
+  moteMat.uniforms.uTime.value = now * 0.0004;
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
