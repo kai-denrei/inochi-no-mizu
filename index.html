@@ -52,6 +52,17 @@
 <script type="module">
 import * as THREE from "three";
 
+// Defensive cleanup: remove stale service workers from prior apps at this origin.
+// v2 has no SW of its own.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    for (const r of regs) r.unregister();
+  }).catch(() => {});
+  if ("caches" in window) {
+    caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+  }
+}
+
 // ── Constants (mechanic-preserving — copied verbatim from v1) ─────────────
 const DROP_RADIUS = 1.8;          // world units (was 14 px in v1)
 const FALL_DURATION_MS = 900;
@@ -139,7 +150,7 @@ const VOID_TOP = 5;
 const VOID_BOTTOM = -7;
 const LOWER_TOP = -7;
 const LOWER_BOTTOM = -30;
-const CAMERA_TILT = -25 * Math.PI / 180;
+const CAMERA_TILT = 0; // tilt is 0 for Phase 1 — re-enable in a polish phase once atmosphere meshes inform the right value
 
 // ── Scene, renderer, camera ───────────────────────────────────────────────
 const canvas = document.getElementById("stage");
