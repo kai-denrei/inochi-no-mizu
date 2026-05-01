@@ -318,6 +318,90 @@ function trueCentroid(drops) {
   return { x: sx / drops.length, y: sy / drops.length };
 }
 
+function triggerFall(members) {
+  if (S.audioReady) playFallPlonk(members.length);
+
+  // compute group centroid as the launch point
+  let sx = 0, sy = 0;
+  for (const m of members) { sx += m.x; sy += m.y; }
+  const cx = sx / members.length, cy = sy / members.length;
+
+  // remove members from active drops; create one falling-drop entity
+  for (const m of members) {
+    scene.remove(m.mesh);
+    const idx = S.drops.indexOf(m);
+    if (idx >= 0) S.drops.splice(idx, 1);
+  }
+
+  const fallGeom = new THREE.SphereGeometry(DROP_RADIUS * 1.2, 24, 16);
+  const fallMat = new THREE.MeshStandardMaterial({
+    color: 0xcfe6ff,
+    emissive: 0x4480c0,
+    emissiveIntensity: 0.5,
+    roughness: 0.3,
+    metalness: 0.1,
+  });
+  const mesh = new THREE.Mesh(fallGeom, fallMat);
+  mesh.position.set(cx, cy, 0);
+  scene.add(mesh);
+
+  S.falling.push({
+    mesh,
+    fromX: cx, fromY: cy,
+    toX: cx + (Math.random() - 0.5) * 4,
+    toY: LOWER_TOP - 2,  // land just below void/lower boundary
+    bornAt: performance.now(),
+    size: members.length,
+  });
+}
+
+function updateFalling() {
+  const now = performance.now();
+  S.falling = S.falling.filter(f => {
+    const t = (now - f.bornAt) / FALL_DURATION_MS;
+    if (t >= 1) {
+      scene.remove(f.mesh);
+      makeSplash(f.toX, f.toY, f.size);
+      return false;
+    }
+    // ease-in-quad gravity
+    const e = t * t;
+    f.mesh.position.x = f.fromX + (f.toX - f.fromX) * t;
+    f.mesh.position.y = f.fromY + (f.toY - f.fromY) * e;
+    return true;
+  });
+}
+
+function makeSplash(x, y, size) {
+  // placeholder — concentric ripple sprite
+  const geom = new THREE.RingGeometry(0.5, 0.7, 32);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xa0c8e0,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(geom, mat);
+  ring.position.set(x, y, 0.1);
+  ring.rotation.x = -Math.PI / 2;
+  scene.add(ring);
+  S.splashes.push({ mesh: ring, bornAt: performance.now(), size });
+}
+
+function updateSplashes() {
+  const now = performance.now();
+  S.splashes = S.splashes.filter(sp => {
+    const t = (now - sp.bornAt) / SPLASH_LIFE_MS;
+    if (t >= 1) {
+      scene.remove(sp.mesh);
+      return false;
+    }
+    sp.mesh.scale.setScalar(1 + t * 6 * sp.size);
+    sp.mesh.material.opacity = 0.8 * (1 - t);
+    return true;
+  });
+}
+
 // ── Update logic ──────────────────────────────────────────────────────────
 function updateDrops(dt) {
   const now = performance.now();
@@ -332,6 +416,10 @@ function updateDrops(dt) {
     if (dist > maxDist) maxDist = dist;
   }
   maxDist = Math.max(1, maxDist);
+
+  // (track which drops were grouped last frame for merge-tic audio)
+  const prevGroups = new Map();
+  for (const d of S.drops) prevGroups.set(d, d.groupId);
 
   for (const d of S.drops) {
     // evaporation
@@ -373,6 +461,64 @@ function updateDrops(dt) {
     }
     return true;
   });
+
+  // ── Merge detection ──────────────────────────────────────────────────
+  // group drops within MERGE_DIST_FACTOR * DROP_RADIUS of any group member
+  const groups = [];
+  for (const d of S.drops) d.groupId = null;
+  for (let i = 0; i < S.drops.length; i++) {
+    const di = S.drops[i];
+    if (di.groupId !== null) continue;
+    const gid = groups.length;
+    di.groupId = gid;
+    const members = [di];
+    let added = true;
+    while (added) {
+      added = false;
+      for (let j = 0; j < S.drops.length; j++) {
+        const dj = S.drops[j];
+        if (dj.groupId !== null) continue;
+        for (const m of members) {
+          if (Math.hypot(dj.x - m.x, dj.y - m.y) < MERGE_DIST_FACTOR * DROP_RADIUS) {
+            dj.groupId = gid;
+            members.push(dj);
+            added = true;
+            break;
+          }
+        }
+      }
+    }
+    groups.push(members);
+  }
+
+  // play merge tic when any drop newly joins a multi-drop group
+  for (const g of groups) {
+    if (g.length < 2) continue;
+    let newJoin = false;
+    for (const d of g) {
+      if (prevGroups.get(d) === null || prevGroups.get(d) === undefined) {
+        // was ungrouped this frame's start
+        newJoin = true; break;
+      }
+    }
+    if (newJoin && S.audioReady) playMergeTic();
+  }
+
+  // ── Fall trigger ─────────────────────────────────────────────────────
+  for (const g of groups) {
+    if (g.length < MIN_GROUP_FOR_FALL) continue;
+    let density = 0;
+    for (let i = 0; i < g.length; i++) {
+      for (let j = i + 1; j < g.length; j++) {
+        const dist = Math.max(0.1, Math.hypot(g[i].x - g[j].x, g[i].y - g[j].y));
+        density += 1 / dist;
+      }
+    }
+    if (density >= g.length * DENSITY_PER_MEMBER) {
+      triggerFall(g);
+      break;
+    }
+  }
 }
 
 // click handler — set retarget point
@@ -401,6 +547,8 @@ function frame(now) {
   lastTime = now;
   if (S.phase === "playing") {
     updateDrops(dt);
+    updateFalling();
+    updateSplashes();
   }
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
