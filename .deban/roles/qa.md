@@ -37,5 +37,6 @@ Blocked by: [[dev]] build complete
 Feeds into: v1 sign-off
 
 ## Session Log
+2026-05-01 — Ship gate MET via headless Chrome playthrough. All 3 rounds played end-to-end, round 1 produced a clean merge+fall+splash. Live deploy at https://kai-denrei.github.io/inochi-no-mizu/ confirmed working.
 2026-05-01 — Ship gate locked, gesture-unlock pattern set.
 2026-05-01 — INIT. Feel-driven validation strategy adopted.
