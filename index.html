@@ -402,6 +402,25 @@ function updateSplashes() {
   });
 }
 
+const fadeEl = document.getElementById("fade");
+
+function endRoundAndAdvance() {
+  if (S.phase !== "playing") return;
+  S.phase = "transition";
+  fadeEl.classList.add("in");
+  setTimeout(() => {
+    const nextIdx = S.roundIdx + 1;
+    if (nextIdx >= S.roundTotal) {
+      // game complete — fade in only, then idle
+      S.phase = "complete";
+      return;
+    }
+    startRound(nextIdx);
+    S.phase = "playing";
+    fadeEl.classList.remove("in");
+  }, FADE_BETWEEN_MS / 2);
+}
+
 // ── Update logic ──────────────────────────────────────────────────────────
 function updateDrops(dt) {
   const now = performance.now();
@@ -517,6 +536,13 @@ function updateDrops(dt) {
     if (density >= g.length * DENSITY_PER_MEMBER) {
       triggerFall(g);
       break;
+    }
+  }
+
+  // round-end: all drops gone (evaporated or fell)
+  if (S.phase === "playing" && S.drops.length === 0 && S.falling.length === 0 && S.splashes.length === 0) {
+    if (now - S.roundStartTime > 1000) {  // small grace period after round start
+      endRoundAndAdvance();
     }
   }
 }
