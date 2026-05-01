@@ -614,6 +614,14 @@ const ringMaterialBase = new THREE.MeshBasicMaterial({
   opacity: 0.8,
   side: THREE.DoubleSide,
 });
+const particleGeometry = new THREE.SphereGeometry(0.25, 8, 6);
+const particleMaterialBase = new THREE.MeshStandardMaterial({
+  color: 0xb8d8ec,
+  roughness: 0.3,
+  metalness: 0.05,
+  transparent: true,
+  opacity: 1.0,
+});
 
 // minimal lights for phase 1 (will be replaced in phase 2)
 const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -716,12 +724,40 @@ function updateFalling() {
 }
 
 function makeSplash(x, y, size) {
-  // placeholder — concentric ripple sprite
-  const ring = new THREE.Mesh(ringGeometry, ringMaterialBase.clone());
-  ring.position.set(x, y, 0.1);
-  ring.rotation.x = -Math.PI / 2;
-  scene.add(ring);
-  S.splashes.push({ mesh: ring, bornAt: performance.now(), size });
+  const groupId = Symbol();
+  const items = [];
+
+  // 3 expanding ripple rings
+  for (let i = 0; i < 3; i++) {
+    const ringGeom = new THREE.RingGeometry(0.5, 0.65, 48);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xb8d8ec, transparent: true, opacity: 0.0, side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.position.set(x, y, 0.05 + i * 0.01);
+    ring.rotation.x = -Math.PI / 2 + CAMERA_TILT;
+    scene.add(ring);
+    items.push({ kind: "ring", mesh: ring, delay: i * 80, baseScale: 1, finalScale: 4 + size * 1.2 });
+  }
+
+  // particle burst — 14 small spheres arc outward
+  const pcount = 10 + size * 2;
+  for (let i = 0; i < pcount; i++) {
+    const p = new THREE.Mesh(particleGeometry, particleMaterialBase.clone());
+    p.position.set(x, y, 0);
+    scene.add(p);
+    const angle = (i / pcount) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const speed = 0.06 + Math.random() * 0.04;
+    items.push({
+      kind: "particle", mesh: p,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed * 0.6 + 0.05,
+      gravity: -0.0006,
+    });
+  }
+
+  S.splashes.push({ groupId, items, bornAt: performance.now(), size });
 }
 
 function updateSplashes() {
@@ -729,12 +765,25 @@ function updateSplashes() {
   S.splashes = S.splashes.filter(sp => {
     const t = (now - sp.bornAt) / SPLASH_LIFE_MS;
     if (t >= 1) {
-      sp.mesh.material.dispose();
-      scene.remove(sp.mesh);
+      for (const it of sp.items) {
+        it.mesh.material.dispose();
+        scene.remove(it.mesh);
+      }
       return false;
     }
-    sp.mesh.scale.setScalar(1 + t * 6 * sp.size);
-    sp.mesh.material.opacity = 0.8 * (1 - t);
+    for (const it of sp.items) {
+      if (it.kind === "ring") {
+        const dt = Math.max(0, t - it.delay / SPLASH_LIFE_MS);
+        const localT = Math.min(1, dt / (1 - it.delay / SPLASH_LIFE_MS));
+        it.mesh.scale.setScalar(it.baseScale + (it.finalScale - it.baseScale) * localT);
+        it.mesh.material.opacity = 0.7 * (1 - localT) * Math.min(1, dt * 4);
+      } else if (it.kind === "particle") {
+        it.mesh.position.x += it.vx * 16;
+        it.mesh.position.y += it.vy * 16;
+        it.vy += it.gravity * 16;
+        it.mesh.material.opacity = 1 - t * t;
+      }
+    }
     return true;
   });
 }
