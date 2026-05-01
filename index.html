@@ -581,7 +581,18 @@ function screenToWorld(clientX, clientY) {
   return { x: worldX, y: worldY / Math.cos(CAMERA_TILT) };
 }
 
+const introEl = document.getElementById("intro");
+
 canvas.addEventListener("click", (e) => {
+  // intro click — `pointer-events: none` on #intro means the click
+  // passes through to canvas, so canvas owns the state transition
+  if (S.phase === "intro") {
+    initAudio();
+    introEl.classList.add("gone");
+    S.phase = "playing";
+    startRound(0);
+    return;
+  }
   if (S.phase !== "playing") return;
   const w = screenToWorld(e.clientX, e.clientY);
   // only retarget if click is in upper region
@@ -604,15 +615,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-
-// ── Bootstrap ─────────────────────────────────────────────────────────────
-const introEl = document.getElementById("intro");
-introEl.addEventListener("click", () => {
-  initAudio();
-  introEl.classList.add("gone");
-  S.phase = "playing";
-  startRound(0);
-});
 
 console.log("inochi-no-mizu v2 scaffold loaded");
 </script>
