@@ -391,6 +391,31 @@ const moteMat = new THREE.ShaderMaterial({
 const motes = new THREE.Points(moteGeom, moteMat);
 scene.add(motes);
 
+// ── Sacred-geometry companions ────────────────────────────────────────────
+function makeMandala(form, color) {
+  let geom;
+  if (form === "icosahedron") geom = new THREE.IcosahedronGeometry(4, 1);
+  else if (form === "dodecahedron") geom = new THREE.DodecahedronGeometry(4, 0);
+  else geom = new THREE.TorusKnotGeometry(3, 0.3, 64, 8, 2, 5);
+
+  const wf = new THREE.WireframeGeometry(geom);
+  const mat = new THREE.LineBasicMaterial({
+    color, transparent: true, opacity: 0.18,
+  });
+  const lines = new THREE.LineSegments(wf, mat);
+  return lines;
+}
+
+const mandalas = [
+  { mesh: makeMandala("icosahedron", 0xc099ff), basePos: [-18, 35, -3], rotSpeed: 0.02, pulseSpeed: 0.28, pulseOffset: 0 },
+  { mesh: makeMandala("dodecahedron", 0x5ac8fa), basePos: [22, 22, -5], rotSpeed: 0.016, pulseSpeed: 0.22, pulseOffset: 1.5 },
+  { mesh: makeMandala("torusknot", 0xff9ec8), basePos: [0, 12, -7], rotSpeed: 0.014, pulseSpeed: 0.17, pulseOffset: 3.2 },
+];
+for (const m of mandalas) {
+  m.mesh.position.set(...m.basePos);
+  scene.add(m.mesh);
+}
+
 const lowerBg = new THREE.Mesh(
   new THREE.PlaneGeometry(200, LOWER_TOP - LOWER_BOTTOM),
   new THREE.MeshBasicMaterial({ color: 0x1a1614 })
@@ -807,6 +832,12 @@ function frame(now) {
     updateDrops(dt);
     updateFalling();
     updateSplashes();
+  }
+  for (const m of mandalas) {
+    m.mesh.rotation.x += m.rotSpeed * 0.016;
+    m.mesh.rotation.y += m.rotSpeed * 0.012;
+    const pulse = 0.05 + 0.18 * (0.5 + 0.5 * Math.sin(now * 0.001 * m.pulseSpeed + m.pulseOffset));
+    m.mesh.material.opacity = pulse;
   }
   auroraMat.uniforms.uTime.value = now * 0.0004;
   moteMat.uniforms.uTime.value = now * 0.0004;
