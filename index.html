@@ -4,16 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>inochi no mizu</title>
-<style>
-  :root {
-    --bg: #0a0d10;
-    --upper: #2a3a2e;
-    --upper-edge: #1a2620;
-    --lower: #3a3633;
-    --lower-light: #555049;
-    --drop: #cfe6ff;
-    --text: #8a9aa3;
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.160.0"
   }
+}
+</script>
+<style>
+  :root { --bg: #06030f; --text: #8a9aa3; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%; height: 100%;
@@ -22,716 +21,135 @@
     font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
     overflow: hidden;
     user-select: none;
-    -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
-  #stage {
-    position: fixed;
-    inset: 0;
-    perspective: 1400px;
-    perspective-origin: 50% 35%;
-  }
-  .plane {
-    position: absolute;
-    left: 50%;
-    transform-style: preserve-3d;
-    pointer-events: none;
-  }
-  #upper-wrap {
-    top: 8%;
-    width: min(70vmin, 640px);
-    height: min(45vmin, 420px);
-    transform: translateX(-50%) rotateX(20deg);
-    pointer-events: auto;
-    cursor: crosshair;
-  }
-  #lower-wrap {
-    top: 60%;
-    width: min(80vmin, 720px);
-    height: min(35vmin, 320px);
-    transform: translateX(-50%) rotateX(20deg);
-  }
-  #upper {
-    width: 100%;
-    height: 100%;
-    background:
-      radial-gradient(ellipse at 50% 40%, #324236 0%, var(--upper) 40%, var(--upper-edge) 90%),
-      var(--upper);
-    border-radius: 14px;
-    box-shadow:
-      inset 0 -30px 40px rgba(0,0,0,0.55),
-      inset 0 14px 30px rgba(255,255,255,0.04);
-    position: relative;
-    overflow: visible;
-  }
-  #upper-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    filter: url(#metaball);
-  }
-  #lower {
-    width: 100%;
-    height: 100%;
-    background:
-      radial-gradient(ellipse at 50% 50%, var(--lower-light) 0%, var(--lower) 55%, #1f1d1b 100%),
-      var(--lower);
-    border-radius: 18px;
-    box-shadow:
-      inset 0 -20px 40px rgba(0,0,0,0.7),
-      inset 0 10px 20px rgba(0,0,0,0.4);
-    position: relative;
-    overflow: hidden;
-  }
-  #lower-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-  }
-  #fade {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    pointer-events: none;
-    opacity: 1;
-    transition: opacity 600ms ease;
-    z-index: 100;
-  }
-  #fade.clear { opacity: 0; }
+  #stage { position: fixed; inset: 0; display: block; cursor: crosshair; }
   #intro {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg);
-    cursor: pointer;
-    z-index: 200;
+    position: fixed; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px; letter-spacing: 0.18em;
+    color: rgba(180, 200, 220, 0.7);
+    pointer-events: none;
     transition: opacity 800ms ease;
+    z-index: 2;
   }
-  #intro.gone { opacity: 0; pointer-events: none; }
-  #intro-line {
-    font-size: clamp(18px, 3.2vmin, 28px);
-    letter-spacing: 0.18em;
-    color: var(--text);
-    font-weight: 300;
-    text-transform: lowercase;
+  #intro.gone { opacity: 0; }
+  #fade {
+    position: fixed; inset: 0;
+    background: var(--bg);
     opacity: 0;
-    animation: lineIn 2400ms ease 400ms forwards;
+    pointer-events: none;
+    transition: opacity 600ms ease;
+    z-index: 3;
   }
-  @keyframes lineIn {
-    0%   { opacity: 0; transform: translateY(6px); }
-    100% { opacity: 0.85; transform: translateY(0); }
-  }
-  svg.defs {
-    position: absolute;
-    width: 0;
-    height: 0;
-    overflow: hidden;
-  }
+  #fade.in { opacity: 1; }
 </style>
 </head>
 <body>
-
-<svg class="defs" aria-hidden="true">
-  <defs>
-    <filter id="metaball" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
-      <feColorMatrix in="blur" mode="matrix"
-        values="1 0 0 0 0
-                0 1 0 0 0
-                0 0 1 0 0
-                0 0 0 24 -10"/>
-    </filter>
-  </defs>
-</svg>
-
-<div id="stage">
-  <div id="upper-wrap" class="plane">
-    <div id="upper">
-      <canvas id="upper-canvas"></canvas>
-    </div>
-  </div>
-  <div id="lower-wrap" class="plane">
-    <div id="lower">
-      <canvas id="lower-canvas"></canvas>
-    </div>
-  </div>
-</div>
-
+<canvas id="stage"></canvas>
+<div id="intro">the cave listens</div>
 <div id="fade"></div>
+<script type="module">
+import * as THREE from "three";
 
-<div id="intro">
-  <div id="intro-line">the cave listens</div>
-</div>
-
-<script>
-"use strict";
-
-const upperCanvas = document.getElementById("upper-canvas");
-const lowerCanvas = document.getElementById("lower-canvas");
-const upperWrap   = document.getElementById("upper-wrap");
-const fadeLayer   = document.getElementById("fade");
-const intro       = document.getElementById("intro");
-
-const uctx = upperCanvas.getContext("2d");
-const lctx = lowerCanvas.getContext("2d");
-
-const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-
-const DROP_RADIUS       = 14;
-const FALL_DURATION_MS  = 900;
-const SPLASH_LIFE_MS    = 1400;
-const FADE_BETWEEN_MS   = 1200;
-
-const EVAP_FLAT_MS      = 1500;
-const EVAP_DECAY_MS     = 1500;
-const EVAP_CUT_MS       = 400;
-const EVAP_TOTAL_MS     = EVAP_FLAT_MS + EVAP_DECAY_MS + EVAP_CUT_MS;
-
-const RETARGET_MAX_SPEED = 2.4;
+// ── Constants (mechanic-preserving — copied verbatim from v1) ─────────────
+const DROP_RADIUS = 1.8;          // world units (was 14 px in v1)
+const FALL_DURATION_MS = 900;
+const SPLASH_LIFE_MS = 1400;
+const FADE_BETWEEN_MS = 1200;
+const EVAP_FLAT_MS = 1500;
+const EVAP_DECAY_MS = 1500;
+const EVAP_CUT_MS = 400;
+const EVAP_TOTAL_MS = EVAP_FLAT_MS + EVAP_DECAY_MS + EVAP_CUT_MS;
+const RETARGET_MAX_SPEED = 0.30;  // world units / ms (scaled from v1's 2.4 px/ms)
 const RETARGET_MIN_SPEED_RATIO = 0.15;
-const ARRIVAL_RADIUS    = 4;
-
+const ARRIVAL_RADIUS = 0.5;
 const MERGE_DIST_FACTOR = 1.8;
 const MIN_GROUP_FOR_FALL = 3;
 const DENSITY_PER_MEMBER = 0.8;
 
-let upperW = 0, upperH = 0;
-let lowerW = 0, lowerH = 0;
+// ── World layout ──────────────────────────────────────────────────────────
+const UPPER_TOP = 50;
+const UPPER_BOTTOM = 5;
+const UPPER_HALF_W = 35;          // upper region horizontal extent (left/right)
+const VOID_TOP = 5;
+const VOID_BOTTOM = -7;
+const LOWER_TOP = -7;
+const LOWER_BOTTOM = -30;
+const CAMERA_TILT = -25 * Math.PI / 180;
+
+// ── Scene, renderer, camera ───────────────────────────────────────────────
+const canvas = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x06030f, 1);
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.OrthographicCamera();
+camera.position.set(0, 0, 80);
+camera.rotation.x = CAMERA_TILT;
 
 function resize() {
-  const upperRect = upperCanvas.getBoundingClientRect();
-  upperW = upperRect.width;
-  upperH = upperRect.height;
-  upperCanvas.width  = Math.floor(upperW * DPR);
-  upperCanvas.height = Math.floor(upperH * DPR);
-  uctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-
-  const lowerRect = lowerCanvas.getBoundingClientRect();
-  lowerW = lowerRect.width;
-  lowerH = lowerRect.height;
-  lowerCanvas.width  = Math.floor(lowerW * DPR);
-  lowerCanvas.height = Math.floor(lowerH * DPR);
-  lctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  const aspect = w / h;
+  const halfH = 50;
+  camera.left = -aspect * halfH;
+  camera.right = aspect * halfH;
+  camera.top = halfH;
+  camera.bottom = -halfH;
+  camera.near = 0.1;
+  camera.far = 200;
+  camera.updateProjectionMatrix();
 }
-
+resize();
 window.addEventListener("resize", resize);
 
-// ── Audio ────────────────────────────────────────────────────────────────
-let audioCtx = null;
-let masterGain = null;
-let convolver = null;
-let dryGain = null;
-let wetGain = null;
+// ── Placeholder regions (will become real content in later phases) ────────
+const upperBg = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, UPPER_TOP - UPPER_BOTTOM),
+  new THREE.MeshBasicMaterial({ color: 0x1a0d2e })
+);
+upperBg.position.set(0, (UPPER_TOP + UPPER_BOTTOM) / 2, -10);
+scene.add(upperBg);
 
-function initAudio() {
-  if (audioCtx) return;
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  audioCtx = new Ctx();
+const lowerBg = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, LOWER_TOP - LOWER_BOTTOM),
+  new THREE.MeshBasicMaterial({ color: 0x1a1614 })
+);
+lowerBg.position.set(0, (LOWER_TOP + LOWER_BOTTOM) / 2, -10);
+scene.add(lowerBg);
 
-  masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.85;
-  masterGain.connect(audioCtx.destination);
-
-  convolver = audioCtx.createConvolver();
-  convolver.buffer = makeCaveIR(0.32, 2.6);
-
-  dryGain = audioCtx.createGain();
-  dryGain.gain.value = 0.7;
-  wetGain = audioCtx.createGain();
-  wetGain.gain.value = 0.5;
-
-  dryGain.connect(masterGain);
-  convolver.connect(wetGain);
-  wetGain.connect(masterGain);
-}
-
-function makeCaveIR(seconds, decay) {
-  const rate = audioCtx.sampleRate;
-  const length = Math.floor(seconds * rate);
-  const buf = audioCtx.createBuffer(2, length, rate);
-  for (let ch = 0; ch < 2; ch++) {
-    const data = buf.getChannelData(ch);
-    for (let i = 0; i < length; i++) {
-      const t = i / length;
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
-    }
-  }
-  return buf;
-}
-
-function tone(freq, durationMs, peakGain, opts = {}) {
-  if (!audioCtx) return;
-  const now = audioCtx.currentTime;
-  const dur = durationMs / 1000;
-  const osc = audioCtx.createOscillator();
-  osc.type = opts.type || "sine";
-  osc.frequency.setValueAtTime(freq, now);
-  if (opts.sweepTo) {
-    osc.frequency.exponentialRampToValueAtTime(opts.sweepTo, now + dur);
-  }
-
-  const env = audioCtx.createGain();
-  env.gain.setValueAtTime(0.0001, now);
-  env.gain.exponentialRampToValueAtTime(peakGain, now + Math.min(0.012, dur * 0.15));
-  env.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-
-  osc.connect(env);
-  env.connect(dryGain);
-  if (opts.wetMix !== 0) env.connect(convolver);
-
-  osc.start(now);
-  osc.stop(now + dur + 0.05);
-}
-
-function playMergeTic() {
-  tone(1100 + Math.random() * 250, 90, 0.045, {
-    sweepTo: 700,
-    type: "sine",
-  });
-}
-
-function playFallPlonk(groupSize) {
-  const baseFreq = 220 * Math.pow(4 / Math.max(2, groupSize), 0.4);
-  const peak = 0.14 + 0.05 * Math.log(Math.max(2, groupSize));
-  tone(baseFreq, 720, peak, {
-    sweepTo: baseFreq * 0.55,
-    type: "sine",
-  });
-  tone(baseFreq * 1.5, 200, peak * 0.35, {
-    sweepTo: baseFreq * 0.9,
-    type: "sine",
-  });
-}
-
-// ── PRNG (deterministic per-load, KikaCentroid-style mulberry) ──────────
-function mulberry32(seed) {
-  return function () {
-    let t = (seed += 0x6D2B79F5) | 0;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-let rng = mulberry32(Math.floor(Math.random() * 1e9));
-
-// ── Round generators ────────────────────────────────────────────────────
-
-function gaussian(stddev = 1) {
-  const u1 = Math.max(rng(), 1e-9);
-  const u2 = rng();
-  return stddev * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-}
-
-function pointsTetroCluster() {
-  const pieces = [
-    [[0,0],[1,0],[2,0],[1,1]],   // T
-    [[0,0],[1,0],[0,1],[1,1]],   // O
-    [[0,0],[1,0],[1,1],[2,1]],   // Z
-    [[0,0],[0,1],[0,2],[1,2]],   // L
-  ];
-  const piece = pieces[Math.floor(rng() * pieces.length)];
-  const cellPx = 56;
-  const cx = upperW / 2 + (rng() - 0.5) * upperW * 0.25;
-  const cy = upperH / 2 + (rng() - 0.5) * upperH * 0.25;
-
-  let mxX = 0, mxY = 0;
-  for (const [dx, dy] of piece) { if (dx > mxX) mxX = dx; if (dy > mxY) mxY = dy; }
-  const ox = cx - (mxX / 2) * cellPx;
-  const oy = cy - (mxY / 2) * cellPx;
-
-  const pts = [];
-  for (const [dx, dy] of piece) {
-    pts.push({
-      x: ox + dx * cellPx + (rng() - 0.5) * 6,
-      y: oy + dy * cellPx + (rng() - 0.5) * 6,
-    });
-  }
-  return pts;
-}
-
-function pointsRandomSpread() {
-  const n = 6;
-  const pts = [];
-  const margin = 80;
-  for (let i = 0; i < n; i++) {
-    pts.push({
-      x: margin + rng() * (upperW - 2 * margin),
-      y: margin + rng() * (upperH - 2 * margin),
-    });
-  }
-  return pts;
-}
-
-function pointsLongShot() {
-  const pts = [];
-  const corner = Math.floor(rng() * 4);
-  const m = 90;
-  const cx = (corner & 1) ? upperW - m : m;
-  const cy = (corner & 2) ? upperH - m : m;
-  const sigma = 22;
-  for (let i = 0; i < 4; i++) {
-    pts.push({
-      x: cx + gaussian(sigma),
-      y: cy + gaussian(sigma),
-    });
-  }
-  const ox = upperW - cx;
-  const oy = upperH - cy;
-  pts.push({ x: ox + gaussian(14), y: oy + gaussian(14) });
-  pts.push({ x: ox + gaussian(14), y: oy + gaussian(14) });
-  return pts;
-}
-
-const ROUND_GENS = [pointsTetroCluster, pointsRandomSpread, pointsLongShot];
-
-// ── State ───────────────────────────────────────────────────────────────
+// ── Game state placeholder (filled in next tasks) ─────────────────────────
 const S = {
-  phase: "idle",       // idle | playing | falling | between
+  phase: "intro",      // "intro" | "playing" | "transition"
+  drops: [],           // active drops on upper plane
+  falling: [],         // drops in flight to lower
+  splashes: [],        // active splash effects
   roundIdx: 0,
-  drops: [],
-  trueCentroid: null,
-  tapped: false,
-  tapPoint: null,
-  tapTime: 0,
-  mergedPairs: new Set(),
-  fallingGroup: null,  // {x,y,r,vy,t0,size,landed,splash}
-  splashes: [],
-  roundOverAt: 0,
+  roundTotal: 3,
+  roundStartTime: 0,
+  retargetTo: null,
+  audioReady: false,
 };
 
-function trueCentroid(pts) {
-  let sx = 0, sy = 0;
-  for (const p of pts) { sx += p.x; sy += p.y; }
-  return { x: sx / pts.length, y: sy / pts.length };
-}
-
-function startRound(idx) {
-  const gen = ROUND_GENS[idx];
-  const pts = gen();
-  S.roundIdx = idx;
-  S.drops = pts.map((p, i) => ({
-    id: i,
-    x: p.x,
-    y: p.y,
-    r: DROP_RADIUS,
-    target: null,
-    vx: 0,
-    vy: 0,
-    bornAt: performance.now(),
-    alive: true,
-    arrived: false,
-    groupId: i,
-  }));
-  S.trueCentroid = trueCentroid(pts);
-  S.tapped = false;
-  S.tapPoint = null;
-  S.tapTime = 0;
-  S.mergedPairs.clear();
-  S.fallingGroup = null;
-  S.splashes = [];
-  S.roundOverAt = 0;
-  S.phase = "playing";
-}
-
-function endRoundAndAdvance() {
-  if (S.phase === "between") return;
-  S.phase = "between";
-  fadeLayer.classList.remove("clear");
-  setTimeout(() => {
-    if (S.roundIdx + 1 >= ROUND_GENS.length) {
-      setTimeout(() => fadeLayer.classList.add("clear"), 400);
-      S.phase = "idle";
-      return;
-    }
-    startRound(S.roundIdx + 1);
-    setTimeout(() => fadeLayer.classList.add("clear"), 100);
-  }, FADE_BETWEEN_MS / 2);
-}
-
-// ── Input ───────────────────────────────────────────────────────────────
-upperWrap.addEventListener("pointerdown", (e) => {
-  if (S.phase !== "playing" || S.tapped || !S.drops.length) return;
-  const rect = upperCanvas.getBoundingClientRect();
-  // The CSS rotateX changes the projected y but we read the CSS-rect coords;
-  // for a 20-degree tilt at this scene scale the visual offset is small enough
-  // to ignore for a PoC. The "feel" is that the tap lands where the click did.
-  const x = (e.clientX - rect.left) * (upperW / rect.width);
-  const y = (e.clientY - rect.top)  * (upperH / rect.height);
-  S.tapped = true;
-  S.tapPoint = { x, y };
-  S.tapTime = performance.now();
-
-  for (const d of S.drops) {
-    const dx = S.trueCentroid.x - d.x;
-    const dy = S.trueCentroid.y - d.y;
-    const distFromCentroid = Math.hypot(dx, dy);
-    const maxDist = Math.hypot(upperW, upperH) / 2;
-    const norm = Math.min(1, distFromCentroid / maxDist);
-    const speedFactor = Math.max(RETARGET_MIN_SPEED_RATIO, 1 - norm);
-    // For drops far from the true centroid, add a small perpendicular drift
-    // so they "lose momentum" sideways (per brief). Drops near the centroid
-    // arrive cleanly with no drift.
-    const driftAngle = (rng() - 0.5) * Math.PI * 0.6 * norm;
-    d.target = { x, y, speedFactor, driftAngle };
-  }
-});
-
-// ── Update ──────────────────────────────────────────────────────────────
-function updateDrops(dt) {
-  if (S.phase !== "playing") return;
-
-  const now = performance.now();
-
-  for (const d of S.drops) {
-    if (!d.alive) continue;
-
-    if (d.target && !d.arrived) {
-      const dx = d.target.x - d.x;
-      const dy = d.target.y - d.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < ARRIVAL_RADIUS) {
-        d.arrived = true;
-        d.vx = 0; d.vy = 0;
-      } else {
-        const speed = RETARGET_MAX_SPEED * d.target.speedFactor;
-        const baseAngle = Math.atan2(dy, dx);
-        const angle = baseAngle + d.target.driftAngle;
-        d.vx = Math.cos(angle) * speed;
-        d.vy = Math.sin(angle) * speed;
-      }
-    }
-    d.x += d.vx * dt * 60;
-    d.y += d.vy * dt * 60;
-
-    // Evaporation only kicks in if a tap has been issued (else we wait)
-    if (S.tapped) {
-      const sinceTap = now - S.tapTime;
-      if (sinceTap > EVAP_FLAT_MS) {
-        const t = sinceTap - EVAP_FLAT_MS;
-        if (t < EVAP_DECAY_MS) {
-          d.alpha = 1 - 0.7 * (t / EVAP_DECAY_MS);
-        } else if (t < EVAP_DECAY_MS + EVAP_CUT_MS) {
-          const c = (t - EVAP_DECAY_MS) / EVAP_CUT_MS;
-          d.alpha = 0.3 * (1 - c);
-        } else {
-          d.alpha = 0;
-          d.alive = false;
-        }
-      } else {
-        d.alpha = 1;
-      }
-    } else {
-      d.alpha = 1;
-    }
-  }
-
-  // Group: union-find drops that overlap their merge-radius
-  const live = S.drops.filter((d) => d.alive);
-  const parent = new Map();
-  for (const d of live) parent.set(d.id, d.id);
-  const find = (x) => {
-    while (parent.get(x) !== x) {
-      parent.set(x, parent.get(parent.get(x)));
-      x = parent.get(x);
-    }
-    return x;
-  };
-  const union = (a, b) => {
-    const ra = find(a), rb = find(b);
-    if (ra !== rb) parent.set(ra, rb);
-  };
-
-  const mergeR = DROP_RADIUS * MERGE_DIST_FACTOR;
-  for (let i = 0; i < live.length; i++) {
-    for (let j = i + 1; j < live.length; j++) {
-      const a = live[i], b = live[j];
-      const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (dist < mergeR) {
-        const ra = find(a.id), rb = find(b.id);
-        if (ra !== rb) {
-          union(a.id, b.id);
-          // New pair-join → tic
-          const key = a.id < b.id ? `${a.id}-${b.id}` : `${b.id}-${a.id}`;
-          if (!S.mergedPairs.has(key)) {
-            S.mergedPairs.add(key);
-            playMergeTic();
-          }
-        }
-      }
-    }
-  }
-
-  for (const d of live) d.groupId = find(d.id);
-
-  // Density check per group → fall trigger
-  if (S.tapped && !S.fallingGroup) {
-    const groups = new Map();
-    for (const d of live) {
-      if (!groups.has(d.groupId)) groups.set(d.groupId, []);
-      groups.get(d.groupId).push(d);
-    }
-    for (const members of groups.values()) {
-      if (members.length < MIN_GROUP_FOR_FALL) continue;
-      let density = 0;
-      for (let i = 0; i < members.length; i++) {
-        for (let j = i + 1; j < members.length; j++) {
-          const dist = Math.hypot(members[i].x - members[j].x, members[i].y - members[j].y);
-          density += 1 / Math.max(0.001, dist / DROP_RADIUS);
-        }
-      }
-      const threshold = members.length * DENSITY_PER_MEMBER;
-      // Also require the group to have stopped moving (arrived or near-arrived)
-      const allSettled = members.every((m) => Math.hypot(m.vx, m.vy) < 0.4);
-      if (density >= threshold && allSettled) {
-        triggerFall(members);
-        return;
-      }
-    }
-  }
-
-  // Round-end on full evaporation (no fall happened)
-  if (S.tapped && !S.fallingGroup && live.length === 0) {
-    if (!S.roundOverAt) S.roundOverAt = now;
-    if (now - S.roundOverAt > 700) endRoundAndAdvance();
-  }
-}
-
-function triggerFall(members) {
-  let cx = 0, cy = 0;
-  for (const m of members) { cx += m.x; cy += m.y; m.alive = false; }
-  cx /= members.length;
-  cy /= members.length;
-  const totalArea = members.length * DROP_RADIUS * DROP_RADIUS;
-  const r = Math.sqrt(totalArea) * 1.2;
-  S.fallingGroup = {
-    x: cx,
-    y: cy,
-    r,
-    size: members.length,
-    t0: performance.now(),
-    landed: false,
-  };
-  S.phase = "falling";
-}
-
-function updateFalling() {
-  if (!S.fallingGroup) return;
-  const f = S.fallingGroup;
-  if (f.landed) return;
-  const t = (performance.now() - f.t0) / FALL_DURATION_MS;
-  if (t >= 1) {
-    f.landed = true;
-    f.landedAt = performance.now();
-    playFallPlonk(f.size);
-    // Map upper coords (where it left from) to lower coords
-    const lx = (f.x / upperW) * lowerW;
-    const ly = lowerH * 0.5;
-    S.splashes.push({ x: lx, y: ly, t0: performance.now(), size: f.size });
-    setTimeout(endRoundAndAdvance, 600);
-  }
-}
-
-// ── Render ──────────────────────────────────────────────────────────────
-
-function renderUpper() {
-  uctx.clearRect(0, 0, upperW, upperH);
-  for (const d of S.drops) {
-    if (!d.alive) continue;
-    const a = d.alpha == null ? 1 : d.alpha;
-    if (a <= 0) continue;
-    uctx.fillStyle = `rgba(207, 230, 255, ${a})`;
-    uctx.beginPath();
-    uctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
-    uctx.fill();
-  }
-
-  if (S.fallingGroup && !S.fallingGroup.landed) {
-    const f = S.fallingGroup;
-    const t = (performance.now() - f.t0) / FALL_DURATION_MS;
-    const eased = t * t;
-    const sag = eased * (upperH - f.y + 60);
-    const a = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
-    const cy = f.y + sag;
-    uctx.fillStyle = `rgba(207, 230, 255, ${a})`;
-    uctx.beginPath();
-    uctx.arc(f.x, cy, f.r, 0, Math.PI * 2);
-    uctx.fill();
-  }
-}
-
-function renderLower() {
-  lctx.clearRect(0, 0, lowerW, lowerH);
-  const now = performance.now();
-
-  for (let i = S.splashes.length - 1; i >= 0; i--) {
-    const s = S.splashes[i];
-    const t = (now - s.t0) / SPLASH_LIFE_MS;
-    if (t >= 1) { S.splashes.splice(i, 1); continue; }
-    const eased = 1 - (1 - t) * (1 - t);
-    const maxR = 30 + s.size * 14;
-    const r = eased * maxR;
-    const a = (1 - t) * 0.8;
-    lctx.strokeStyle = `rgba(207, 230, 255, ${a})`;
-    lctx.lineWidth = 2;
-    lctx.beginPath();
-    lctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-    lctx.stroke();
-
-    lctx.strokeStyle = `rgba(207, 230, 255, ${a * 0.5})`;
-    lctx.lineWidth = 1;
-    lctx.beginPath();
-    lctx.arc(s.x, s.y, r * 0.6, 0, Math.PI * 2);
-    lctx.stroke();
-
-    if (t < 0.4) {
-      const beadA = (1 - t / 0.4);
-      const grad = lctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 14 + s.size);
-      grad.addColorStop(0, `rgba(207, 230, 255, ${beadA})`);
-      grad.addColorStop(1, `rgba(207, 230, 255, 0)`);
-      lctx.fillStyle = grad;
-      lctx.beginPath();
-      lctx.arc(s.x, s.y, 14 + s.size, 0, Math.PI * 2);
-      lctx.fill();
-    }
-  }
-}
-
-// ── Main loop ───────────────────────────────────────────────────────────
-let lastT = performance.now();
-function frame() {
-  const now = performance.now();
-  const dt = Math.min(0.05, (now - lastT) / 1000);
-  lastT = now;
-
-  updateDrops(dt);
-  updateFalling();
-  renderUpper();
-  renderLower();
-
+// ── Render loop ───────────────────────────────────────────────────────────
+let lastTime = performance.now();
+function frame(now) {
+  const dt = Math.min(50, now - lastTime);
+  lastTime = now;
+  // update logic added in later tasks
+  renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
+requestAnimationFrame(frame);
 
-// ── Boot ────────────────────────────────────────────────────────────────
-function boot() {
-  initAudio();
-  intro.classList.add("gone");
-  resize();
-  startRound(0);
-  fadeLayer.classList.add("clear");
-  requestAnimationFrame(frame);
-}
+// ── Bootstrap (intro click handler — wired in next task) ──────────────────
+document.getElementById("intro").addEventListener("click", () => {});
+canvas.addEventListener("click", () => {});
 
-intro.addEventListener("pointerdown", () => {
-  setTimeout(boot, 200);
-}, { once: true });
-
-window.addEventListener("DOMContentLoaded", () => {
-  resize();
-});
+console.log("inochi-no-mizu v2 scaffold loaded");
 </script>
 </body>
 </html>
