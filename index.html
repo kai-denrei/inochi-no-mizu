@@ -138,12 +138,12 @@
 <svg class="defs" aria-hidden="true">
   <defs>
     <filter id="metaball" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
       <feColorMatrix in="blur" mode="matrix"
         values="1 0 0 0 0
                 0 1 0 0 0
                 0 0 1 0 0
-                0 0 0 18 -7"/>
+                0 0 0 24 -10"/>
     </filter>
   </defs>
 </svg>
@@ -195,7 +195,7 @@ const RETARGET_MAX_SPEED = 2.4;
 const RETARGET_MIN_SPEED_RATIO = 0.15;
 const ARRIVAL_RADIUS    = 4;
 
-const MERGE_DIST_FACTOR = 2.0;
+const MERGE_DIST_FACTOR = 1.8;
 const MIN_GROUP_FOR_FALL = 3;
 const DENSITY_PER_MEMBER = 0.8;
 
@@ -334,7 +334,7 @@ function pointsTetroCluster() {
     [[0,0],[0,1],[0,2],[1,2]],   // L
   ];
   const piece = pieces[Math.floor(rng() * pieces.length)];
-  const cellPx = 38;
+  const cellPx = 56;
   const cx = upperW / 2 + (rng() - 0.5) * upperW * 0.25;
   const cy = upperH / 2 + (rng() - 0.5) * upperH * 0.25;
 
@@ -443,8 +443,6 @@ function endRoundAndAdvance() {
   fadeLayer.classList.remove("clear");
   setTimeout(() => {
     if (S.roundIdx + 1 >= ROUND_GENS.length) {
-      // After final round: stay faded; gentle re-fade-in to a still upper plane
-      // so the screen isn't black forever, but no new round starts.
       setTimeout(() => fadeLayer.classList.add("clear"), 400);
       S.phase = "idle";
       return;
@@ -474,7 +472,11 @@ upperWrap.addEventListener("pointerdown", (e) => {
     const maxDist = Math.hypot(upperW, upperH) / 2;
     const norm = Math.min(1, distFromCentroid / maxDist);
     const speedFactor = Math.max(RETARGET_MIN_SPEED_RATIO, 1 - norm);
-    d.target = { x, y, speedFactor };
+    // For drops far from the true centroid, add a small perpendicular drift
+    // so they "lose momentum" sideways (per brief). Drops near the centroid
+    // arrive cleanly with no drift.
+    const driftAngle = (rng() - 0.5) * Math.PI * 0.6 * norm;
+    d.target = { x, y, speedFactor, driftAngle };
   }
 });
 
@@ -496,8 +498,10 @@ function updateDrops(dt) {
         d.vx = 0; d.vy = 0;
       } else {
         const speed = RETARGET_MAX_SPEED * d.target.speedFactor;
-        d.vx = (dx / dist) * speed;
-        d.vy = (dy / dist) * speed;
+        const baseAngle = Math.atan2(dy, dx);
+        const angle = baseAngle + d.target.driftAngle;
+        d.vx = Math.cos(angle) * speed;
+        d.vy = Math.sin(angle) * speed;
       }
     }
     d.x += d.vx * dt * 60;
@@ -639,13 +643,9 @@ function renderUpper() {
     if (!d.alive) continue;
     const a = d.alpha == null ? 1 : d.alpha;
     if (a <= 0) continue;
-    const grad = uctx.createRadialGradient(d.x, d.y, 1, d.x, d.y, d.r * 1.6);
-    grad.addColorStop(0, `rgba(207, 230, 255, ${a})`);
-    grad.addColorStop(0.55, `rgba(180, 215, 245, ${a * 0.9})`);
-    grad.addColorStop(1, `rgba(160, 200, 235, 0)`);
-    uctx.fillStyle = grad;
+    uctx.fillStyle = `rgba(207, 230, 255, ${a})`;
     uctx.beginPath();
-    uctx.arc(d.x, d.y, d.r * 1.6, 0, Math.PI * 2);
+    uctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
     uctx.fill();
   }
 
@@ -656,11 +656,7 @@ function renderUpper() {
     const sag = eased * (upperH - f.y + 60);
     const a = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
     const cy = f.y + sag;
-    const grad = uctx.createRadialGradient(f.x, cy, 1, f.x, cy, f.r);
-    grad.addColorStop(0, `rgba(207, 230, 255, ${a})`);
-    grad.addColorStop(0.55, `rgba(180, 215, 245, ${a * 0.9})`);
-    grad.addColorStop(1, `rgba(160, 200, 235, 0)`);
-    uctx.fillStyle = grad;
+    uctx.fillStyle = `rgba(207, 230, 255, ${a})`;
     uctx.beginPath();
     uctx.arc(f.x, cy, f.r, 0, Math.PI * 2);
     uctx.fill();
