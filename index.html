@@ -68,6 +68,69 @@ const MERGE_DIST_FACTOR = 1.8;
 const MIN_GROUP_FOR_FALL = 3;
 const DENSITY_PER_MEMBER = 0.8;
 
+// ── Audio (ported from v1) ────────────────────────────────────────────────
+let audioCtx = null;
+let masterGain = null;
+let convolver = null;
+
+function makeCaveIR(seconds, decay) {
+  const rate = audioCtx.sampleRate;
+  const length = Math.floor(seconds * rate);
+  const buf = audioCtx.createBuffer(2, length, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      const t = i / length;
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+    }
+  }
+  return buf;
+}
+
+function initAudio() {
+  if (audioCtx) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  audioCtx = new Ctx();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.85;
+  convolver = audioCtx.createConvolver();
+  convolver.buffer = makeCaveIR(0.3, 3);
+  masterGain.connect(convolver);
+  convolver.connect(audioCtx.destination);
+  S.audioReady = true;
+}
+
+function tone(freq, durationMs, peakGain, opts = {}) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const dur = durationMs / 1000;
+  const osc = audioCtx.createOscillator();
+  osc.type = opts.type || "sine";
+  osc.frequency.setValueAtTime(freq, now);
+  if (opts.sweepTo) {
+    osc.frequency.exponentialRampToValueAtTime(opts.sweepTo, now + dur);
+  }
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0, now);
+  env.gain.linearRampToValueAtTime(peakGain, now + Math.min(0.005, dur * 0.1));
+  env.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  osc.connect(env);
+  env.connect(masterGain);
+  osc.start(now);
+  osc.stop(now + dur + 0.05);
+}
+
+function playMergeTic() {
+  tone(1200, 80, 0.04, { sweepTo: 1000 });
+}
+
+function playFallPlonk(groupSize) {
+  const baseFreq = 220 * Math.pow(4 / Math.max(2, groupSize), 0.4);
+  const peak = 0.14 + 0.05 * Math.log(Math.max(2, groupSize));
+  tone(baseFreq, 600, peak, { type: "sine" });
+}
+
 // ── World layout ──────────────────────────────────────────────────────────
 const UPPER_TOP = 50;
 const UPPER_BOTTOM = 5;
@@ -145,8 +208,14 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-// ── Bootstrap (intro click handler — wired in next task) ──────────────────
-document.getElementById("intro").addEventListener("click", () => {});
+// ── Bootstrap ─────────────────────────────────────────────────────────────
+const introEl = document.getElementById("intro");
+introEl.addEventListener("click", () => {
+  initAudio();
+  introEl.classList.add("gone");
+  S.phase = "playing";
+  // first round will start in next task
+});
 canvas.addEventListener("click", () => {});
 
 console.log("inochi-no-mizu v2 scaffold loaded");
