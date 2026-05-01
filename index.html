@@ -712,9 +712,16 @@ function updateFalling() {
       return false;
     }
     f.mesh.material.uniforms.uTime.value = now * 0.0004;
-    // realm morph based on y position in void
-    const yProgress = (VOID_TOP - f.mesh.position.y) / (VOID_TOP - VOID_BOTTOM);
-    f.mesh.material.uniforms.uRealm.value = Math.max(0, Math.min(1, yProgress));
+    // start morphing once drop crosses VOID_TOP, completed by VOID_BOTTOM
+    const yPos = f.mesh.position.y;
+    let realm = 0;
+    if (yPos <= VOID_TOP && yPos >= VOID_BOTTOM) {
+      realm = (VOID_TOP - yPos) / (VOID_TOP - VOID_BOTTOM);
+    } else if (yPos < VOID_BOTTOM) {
+      realm = 1.0;
+    }
+    f.mesh.material.uniforms.uRealm.value = Math.max(0, Math.min(1, realm));
+    f.mesh.material.uniforms.uAlpha.value = 1.0;
     // ease-in-quad gravity
     const e = t * t;
     f.mesh.position.x = f.fromX + (f.toX - f.fromX) * t;
