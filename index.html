@@ -496,12 +496,32 @@ const haze = new THREE.Mesh(
 haze.position.set(0, (UPPER_TOP + UPPER_BOTTOM) / 2, -7);
 scene.add(haze);
 
-const lowerBg = new THREE.Mesh(
+// ── Lower realm: stone basin ─────────────────────────────────────────────
+const basinGeom = new THREE.CircleGeometry(28, 64);
+const basinMat = new THREE.MeshStandardMaterial({
+  color: 0x2a2522,
+  roughness: 0.95,
+  metalness: 0.0,
+});
+const basin = new THREE.Mesh(basinGeom, basinMat);
+basin.position.set(0, (LOWER_TOP + LOWER_BOTTOM) / 2, -8);
+basin.rotation.x = -Math.PI / 2 + CAMERA_TILT;
+scene.add(basin);
+
+// dark backdrop behind basin to fill view
+const lowerBackdrop = new THREE.Mesh(
   new THREE.PlaneGeometry(200, LOWER_TOP - LOWER_BOTTOM),
-  new THREE.MeshBasicMaterial({ color: 0x1a1614 })
+  new THREE.MeshBasicMaterial({ color: 0x0d0c0b })
 );
-lowerBg.position.set(0, (LOWER_TOP + LOWER_BOTTOM) / 2, -10);
-scene.add(lowerBg);
+lowerBackdrop.position.set(0, (LOWER_TOP + LOWER_BOTTOM) / 2, -12);
+scene.add(lowerBackdrop);
+
+// warm overhead light for lower realm
+const lowerLight = new THREE.DirectionalLight(0xffe4b8, 0.8);
+lowerLight.position.set(0, 10, 5);
+lowerLight.target.position.set(0, (LOWER_TOP + LOWER_BOTTOM) / 2, 0);
+scene.add(lowerLight);
+scene.add(lowerLight.target);
 
 // ── RNG (seedable) ────────────────────────────────────────────────────────
 let rngSeed = (Math.random() * 0xffffffff) >>> 0;
