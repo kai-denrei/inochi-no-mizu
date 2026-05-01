@@ -262,12 +262,146 @@ const S = {
   audioReady: false,
 };
 
+// ── Drops ─────────────────────────────────────────────────────────────────
+const dropGeometry = new THREE.SphereGeometry(DROP_RADIUS, 24, 16);
+const dropMaterial = new THREE.MeshStandardMaterial({
+  color: 0xcfe6ff,
+  emissive: 0x4480c0,
+  emissiveIntensity: 0.4,
+  roughness: 0.4,
+  metalness: 0.1,
+});
+
+// minimal lights for phase 1 (will be replaced in phase 2)
+const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 8);
+scene.add(dirLight);
+
+function makeDrop(x, y) {
+  const mesh = new THREE.Mesh(dropGeometry, dropMaterial.clone());
+  mesh.position.set(x, y, 0);
+  scene.add(mesh);
+  return {
+    mesh,
+    x, y,
+    targetX: x, targetY: y,
+    vx: 0, vy: 0,
+    bornAt: performance.now(),
+    alpha: 1.0,
+    groupId: null,
+  };
+}
+
+function clearDrops() {
+  for (const d of S.drops) scene.remove(d.mesh);
+  for (const f of S.falling) scene.remove(f.mesh);
+  for (const sp of S.splashes) scene.remove(sp.mesh);
+  S.drops = []; S.falling = []; S.splashes = [];
+}
+
+function startRound(idx) {
+  clearDrops();
+  S.roundIdx = idx;
+  S.roundStartTime = performance.now();
+  const gen = ROUND_GENS[idx % ROUND_GENS.length];
+  const pts = gen();
+  for (const p of pts) S.drops.push(makeDrop(p.x, p.y));
+  S.retargetTo = null;
+}
+
+function trueCentroid(drops) {
+  if (!drops.length) return null;
+  let sx = 0, sy = 0;
+  for (const d of drops) { sx += d.x; sy += d.y; }
+  return { x: sx / drops.length, y: sy / drops.length };
+}
+
+// ── Update logic ──────────────────────────────────────────────────────────
+function updateDrops(dt) {
+  const now = performance.now();
+  const centroid = trueCentroid(S.drops);
+  if (!centroid) return;
+
+  // compute max distance from centroid (for retarget speed scaling)
+  let maxDist = 0;
+  for (const d of S.drops) {
+    const dx = d.x - centroid.x, dy = d.y - centroid.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxDist) maxDist = dist;
+  }
+  maxDist = Math.max(1, maxDist);
+
+  for (const d of S.drops) {
+    // evaporation
+    const age = now - d.bornAt;
+    if (age < EVAP_FLAT_MS) d.alpha = 1.0;
+    else if (age < EVAP_FLAT_MS + EVAP_DECAY_MS) {
+      d.alpha = 1.0 - (age - EVAP_FLAT_MS) / EVAP_DECAY_MS;
+    } else if (age < EVAP_TOTAL_MS) {
+      d.alpha = Math.max(0, 0.05 * (1 - (age - EVAP_FLAT_MS - EVAP_DECAY_MS) / EVAP_CUT_MS));
+    } else d.alpha = 0;
+    d.mesh.material.opacity = d.alpha;
+    d.mesh.material.transparent = true;
+
+    // retarget
+    if (S.retargetTo) {
+      const dxc = d.x - centroid.x, dyc = d.y - centroid.y;
+      const distFromCentroid = Math.hypot(dxc, dyc);
+      const speedRatio = Math.max(RETARGET_MIN_SPEED_RATIO, 1 - distFromCentroid / maxDist);
+      const speed = RETARGET_MAX_SPEED * speedRatio;
+
+      const tx = S.retargetTo.x, ty = S.retargetTo.y;
+      const dx = tx - d.x, dy = ty - d.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > ARRIVAL_RADIUS) {
+        const nx = dx / dist, ny = dy / dist;
+        d.x += nx * speed * dt;
+        d.y += ny * speed * dt;
+      }
+    }
+
+    d.mesh.position.set(d.x, d.y, 0);
+  }
+
+  // remove fully-evaporated drops
+  S.drops = S.drops.filter(d => {
+    if (d.alpha <= 0.01) {
+      scene.remove(d.mesh);
+      return false;
+    }
+    return true;
+  });
+}
+
+// click handler — set retarget point
+function screenToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
+  const worldX = ndcX * camera.right;
+  const worldY = ndcY * camera.top;
+  // apply inverse of camera tilt for the upper plane (z=0)
+  return { x: worldX, y: worldY / Math.cos(CAMERA_TILT) };
+}
+
+canvas.addEventListener("click", (e) => {
+  if (S.phase !== "playing") return;
+  const w = screenToWorld(e.clientX, e.clientY);
+  // only retarget if click is in upper region
+  if (w.y < UPPER_BOTTOM) return;
+  S.retargetTo = w;
+});
+
 // ── Render loop ───────────────────────────────────────────────────────────
 let lastTime = performance.now();
 function frame(now) {
   const dt = Math.min(50, now - lastTime);
   lastTime = now;
-  // update logic added in later tasks
+  if (S.phase === "playing") {
+    updateDrops(dt);
+  }
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
@@ -279,9 +413,8 @@ introEl.addEventListener("click", () => {
   initAudio();
   introEl.classList.add("gone");
   S.phase = "playing";
-  // first round will start in next task
+  startRound(0);
 });
-canvas.addEventListener("click", () => {});
 
 console.log("inochi-no-mizu v2 scaffold loaded");
 </script>
