@@ -260,6 +260,7 @@ const S = {
   roundStartTime: 0,
   retargetTo: null,
   audioReady: false,
+  tapped: false,
 };
 
 // ── Drops ─────────────────────────────────────────────────────────────────
@@ -270,6 +271,23 @@ const dropMaterial = new THREE.MeshStandardMaterial({
   emissiveIntensity: 0.4,
   roughness: 0.4,
   metalness: 0.1,
+});
+
+// Shared falling-drop and splash resources (disposed only at app teardown)
+const fallGeometry = new THREE.SphereGeometry(DROP_RADIUS * 1.2, 24, 16);
+const fallMaterial = new THREE.MeshStandardMaterial({
+  color: 0xcfe6ff,
+  emissive: 0x4480c0,
+  emissiveIntensity: 0.5,
+  roughness: 0.3,
+  metalness: 0.1,
+});
+const ringGeometry = new THREE.RingGeometry(0.5, 0.7, 32);
+const ringMaterialBase = new THREE.MeshBasicMaterial({
+  color: 0xa0c8e0,
+  transparent: true,
+  opacity: 0.8,
+  side: THREE.DoubleSide,
 });
 
 // minimal lights for phase 1 (will be replaced in phase 2)
@@ -291,6 +309,7 @@ function makeDrop(x, y) {
     bornAt: performance.now(),
     alpha: 1.0,
     groupId: null,
+    seenInPrevFrame: false,
   };
 }
 
@@ -309,6 +328,7 @@ function startRound(idx) {
   const pts = gen();
   for (const p of pts) S.drops.push(makeDrop(p.x, p.y));
   S.retargetTo = null;
+  S.tapped = false;
 }
 
 function trueCentroid(drops) {
@@ -333,15 +353,7 @@ function triggerFall(members) {
     if (idx >= 0) S.drops.splice(idx, 1);
   }
 
-  const fallGeom = new THREE.SphereGeometry(DROP_RADIUS * 1.2, 24, 16);
-  const fallMat = new THREE.MeshStandardMaterial({
-    color: 0xcfe6ff,
-    emissive: 0x4480c0,
-    emissiveIntensity: 0.5,
-    roughness: 0.3,
-    metalness: 0.1,
-  });
-  const mesh = new THREE.Mesh(fallGeom, fallMat);
+  const mesh = new THREE.Mesh(fallGeometry, fallMaterial.clone());
   mesh.position.set(cx, cy, 0);
   scene.add(mesh);
 
@@ -374,14 +386,7 @@ function updateFalling() {
 
 function makeSplash(x, y, size) {
   // placeholder — concentric ripple sprite
-  const geom = new THREE.RingGeometry(0.5, 0.7, 32);
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0xa0c8e0,
-    transparent: true,
-    opacity: 0.8,
-    side: THREE.DoubleSide,
-  });
-  const ring = new THREE.Mesh(geom, mat);
+  const ring = new THREE.Mesh(ringGeometry, ringMaterialBase.clone());
   ring.position.set(x, y, 0.1);
   ring.rotation.x = -Math.PI / 2;
   scene.add(ring);
@@ -393,6 +398,7 @@ function updateSplashes() {
   S.splashes = S.splashes.filter(sp => {
     const t = (now - sp.bornAt) / SPLASH_LIFE_MS;
     if (t >= 1) {
+      sp.mesh.material.dispose();
       scene.remove(sp.mesh);
       return false;
     }
@@ -438,7 +444,11 @@ function updateDrops(dt) {
 
   // (track which drops were grouped last frame for merge-tic audio)
   const prevGroups = new Map();
-  for (const d of S.drops) prevGroups.set(d, d.groupId);
+  for (const d of S.drops) {
+    if (d.seenInPrevFrame) prevGroups.set(d, d.groupId);
+  }
+  // after building, mark all current drops as seen so they participate next frame
+  for (const d of S.drops) d.seenInPrevFrame = true;
 
   for (const d of S.drops) {
     // evaporation
@@ -524,18 +534,20 @@ function updateDrops(dt) {
   }
 
   // ── Fall trigger ─────────────────────────────────────────────────────
-  for (const g of groups) {
-    if (g.length < MIN_GROUP_FOR_FALL) continue;
-    let density = 0;
-    for (let i = 0; i < g.length; i++) {
-      for (let j = i + 1; j < g.length; j++) {
-        const dist = Math.max(0.1, Math.hypot(g[i].x - g[j].x, g[i].y - g[j].y));
-        density += 1 / dist;
+  if (S.tapped) {
+    for (const g of groups) {
+      if (g.length < MIN_GROUP_FOR_FALL) continue;
+      let density = 0;
+      for (let i = 0; i < g.length; i++) {
+        for (let j = i + 1; j < g.length; j++) {
+          const dist = Math.max(0.001, Math.hypot(g[i].x - g[j].x, g[i].y - g[j].y) / DROP_RADIUS);
+          density += 1 / dist;
+        }
       }
-    }
-    if (density >= g.length * DENSITY_PER_MEMBER) {
-      triggerFall(g);
-      break;
+      if (density >= g.length * DENSITY_PER_MEMBER) {
+        triggerFall(g);
+        break;
+      }
     }
   }
 
@@ -564,6 +576,7 @@ canvas.addEventListener("click", (e) => {
   // only retarget if click is in upper region
   if (w.y < UPPER_BOTTOM) return;
   S.retargetTo = w;
+  S.tapped = true;
 });
 
 // ── Render loop ───────────────────────────────────────────────────────────
