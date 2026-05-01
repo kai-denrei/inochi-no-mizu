@@ -152,6 +152,101 @@ const LOWER_TOP = -7;
 const LOWER_BOTTOM = -30;
 const CAMERA_TILT = 0; // tilt is 0 for Phase 1 — re-enable in a polish phase once atmosphere meshes inform the right value
 
+// ── Drop shader (galaxy-inside-silhouette) ────────────────────────────────
+const dropVS = `
+  varying vec3 vLocalPos;
+  varying vec3 vNormal;
+  void main() {
+    vLocalPos = position;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const dropFS = `
+  varying vec3 vLocalPos;
+  varying vec3 vNormal;
+  uniform float uTime;
+  uniform float uRealm;       // 0 = full DMT, 1 = clean water
+  uniform float uAlpha;
+  uniform vec3  uPalette[5];
+
+  // 6-fold mandala pattern
+  float mandala(vec2 p) {
+    float r = length(p);
+    float a = atan(p.y, p.x);
+    float petals = cos(a * 6.0) * 0.5 + 0.5;
+    float ring = smoothstep(0.4, 0.5, r) - smoothstep(0.55, 0.65, r);
+    return petals * ring + smoothstep(0.18, 0.0, r) * 0.6;
+  }
+
+  // simple cloud noise
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float cnoise(vec2 p) {
+    vec2 i = floor(p); vec2 f = fract(p);
+    float a = hash(i); float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0)); float d = hash(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+  }
+
+  void main() {
+    // sample interior using local sphere coords projected to 2D
+    vec2 p = vLocalPos.xy * 0.5;
+
+    // mandala layer (rotates slowly)
+    float ma = mandala(vec2(
+      p.x * cos(uTime * 0.3) - p.y * sin(uTime * 0.3),
+      p.x * sin(uTime * 0.3) + p.y * cos(uTime * 0.3)
+    ));
+
+    // cloud layer (drifts)
+    float cl = cnoise(p * 3.0 + vec2(uTime * 0.15, -uTime * 0.1));
+
+    // iridescent palette cycle by hue
+    float hue = mod(uTime * 0.05 + cl * 0.5, 1.0) * 5.0;
+    int pi = int(floor(hue));
+    float pf = fract(hue);
+    vec3 c0 = uPalette[pi];
+    vec3 c1 = uPalette[(pi + 1) % 5];
+    vec3 dmt = mix(c0, c1, pf) * (0.4 + ma * 0.6 + cl * 0.3);
+
+    // clean water (for high uRealm)
+    float fres = pow(1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
+    vec3 water = mix(vec3(0.55, 0.75, 0.92), vec3(0.95, 0.98, 1.0), fres);
+
+    vec3 col = mix(dmt, water, uRealm);
+
+    // soft halo at silhouette edge
+    float edge = pow(1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0))), 3.0);
+    col += vec3(0.6, 0.4, 0.9) * edge * 0.4 * (1.0 - uRealm);
+
+    gl_FragColor = vec4(col, uAlpha);
+  }
+`;
+
+const DROP_PALETTE = [
+  new THREE.Vector3(1.0, 0.43, 0.71),   // magenta
+  new THREE.Vector3(0.70, 0.53, 1.0),   // violet
+  new THREE.Vector3(0.35, 0.78, 0.98),  // cyan
+  new THREE.Vector3(0.30, 0.82, 0.88),  // teal
+  new THREE.Vector3(1.0, 0.82, 0.40),   // gold
+];
+
+function makeDropMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: dropVS,
+    fragmentShader: dropFS,
+    uniforms: {
+      uTime:    { value: 0 },
+      uRealm:   { value: 0.0 },
+      uAlpha:   { value: 1.0 },
+      uPalette: { value: DROP_PALETTE },
+    },
+    transparent: true,
+  });
+}
+
 // ── Scene, renderer, camera ───────────────────────────────────────────────
 const canvas = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -337,23 +432,9 @@ const S = {
 
 // ── Drops ─────────────────────────────────────────────────────────────────
 const dropGeometry = new THREE.SphereGeometry(DROP_RADIUS, 24, 16);
-const dropMaterial = new THREE.MeshStandardMaterial({
-  color: 0xcfe6ff,
-  emissive: 0x4480c0,
-  emissiveIntensity: 0.4,
-  roughness: 0.4,
-  metalness: 0.1,
-});
 
-// Shared falling-drop and splash resources (disposed only at app teardown)
+// Shared falling-drop and splash geometry (disposed only at app teardown)
 const fallGeometry = new THREE.SphereGeometry(DROP_RADIUS * 1.2, 24, 16);
-const fallMaterial = new THREE.MeshStandardMaterial({
-  color: 0xcfe6ff,
-  emissive: 0x4480c0,
-  emissiveIntensity: 0.5,
-  roughness: 0.3,
-  metalness: 0.1,
-});
 const ringGeometry = new THREE.RingGeometry(0.5, 0.7, 32);
 const ringMaterialBase = new THREE.MeshBasicMaterial({
   color: 0xa0c8e0,
@@ -370,7 +451,7 @@ dirLight.position.set(5, 10, 8);
 scene.add(dirLight);
 
 function makeDrop(x, y) {
-  const mesh = new THREE.Mesh(dropGeometry, dropMaterial.clone());
+  const mesh = new THREE.Mesh(dropGeometry, makeDropMaterial());
   mesh.position.set(x, y, 0);
   scene.add(mesh);
   return {
@@ -386,9 +467,9 @@ function makeDrop(x, y) {
 }
 
 function clearDrops() {
-  for (const d of S.drops) scene.remove(d.mesh);
-  for (const f of S.falling) scene.remove(f.mesh);
-  for (const sp of S.splashes) scene.remove(sp.mesh);
+  for (const d of S.drops) { d.mesh.material.dispose(); scene.remove(d.mesh); }
+  for (const f of S.falling) { f.mesh.material.dispose(); scene.remove(f.mesh); }
+  for (const sp of S.splashes) { sp.mesh.material.dispose(); scene.remove(sp.mesh); }
   S.drops = []; S.falling = []; S.splashes = [];
 }
 
@@ -420,12 +501,13 @@ function triggerFall(members) {
 
   // remove members from active drops; create one falling-drop entity
   for (const m of members) {
+    m.mesh.material.dispose();
     scene.remove(m.mesh);
     const idx = S.drops.indexOf(m);
     if (idx >= 0) S.drops.splice(idx, 1);
   }
 
-  const mesh = new THREE.Mesh(fallGeometry, fallMaterial.clone());
+  const mesh = new THREE.Mesh(fallGeometry, makeDropMaterial());
   mesh.position.set(cx, cy, 0);
   scene.add(mesh);
 
@@ -444,10 +526,15 @@ function updateFalling() {
   S.falling = S.falling.filter(f => {
     const t = (now - f.bornAt) / FALL_DURATION_MS;
     if (t >= 1) {
+      f.mesh.material.dispose();
       scene.remove(f.mesh);
       makeSplash(f.toX, f.toY, f.size);
       return false;
     }
+    f.mesh.material.uniforms.uTime.value = now * 0.001;
+    // realm morph based on y position in void
+    const yProgress = (VOID_TOP - f.mesh.position.y) / (VOID_TOP - VOID_BOTTOM);
+    f.mesh.material.uniforms.uRealm.value = Math.max(0, Math.min(1, yProgress));
     // ease-in-quad gravity
     const e = t * t;
     f.mesh.position.x = f.fromX + (f.toX - f.fromX) * t;
@@ -531,8 +618,6 @@ function updateDrops(dt) {
     } else if (age < EVAP_TOTAL_MS) {
       d.alpha = Math.max(0, 0.05 * (1 - (age - EVAP_FLAT_MS - EVAP_DECAY_MS) / EVAP_CUT_MS));
     } else d.alpha = 0;
-    d.mesh.material.opacity = d.alpha;
-    d.mesh.material.transparent = true;
 
     // retarget
     if (S.retargetTo) {
@@ -552,11 +637,15 @@ function updateDrops(dt) {
     }
 
     d.mesh.position.set(d.x, d.y, 0);
+    d.mesh.material.uniforms.uTime.value = now * 0.001;
+    d.mesh.material.uniforms.uAlpha.value = d.alpha;
+    d.mesh.material.uniforms.uRealm.value = 0.0;  // upper realm = full DMT
   }
 
   // remove fully-evaporated drops
   S.drops = S.drops.filter(d => {
     if (d.alpha <= 0.01) {
+      d.mesh.material.dispose();
       scene.remove(d.mesh);
       return false;
     }
