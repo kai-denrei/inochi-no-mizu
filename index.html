@@ -416,6 +416,52 @@ for (const m of mandalas) {
   scene.add(m.mesh);
 }
 
+// ── God-rays ──────────────────────────────────────────────────────────────
+const godrayMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uTint: { value: new THREE.Color(0xffd0a0) } },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform float uTime;
+    uniform vec3  uTint;
+    void main() {
+      // soft vertical band; shimmers slowly
+      float band = exp(-pow((vUv.x - 0.5) * 5.0, 2.0));
+      float shim = 0.7 + 0.3 * sin(vUv.y * 30.0 + uTime * 0.3);
+      float a = band * shim * 0.10;
+      // fade at top and bottom
+      a *= smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+      gl_FragColor = vec4(uTint, a);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+
+function makeGodRay(x, angle, w = 8, h = 60, tint) {
+  const mat = godrayMat.clone();
+  mat.uniforms.uTime = godrayMat.uniforms.uTime;  // share time
+  if (tint) mat.uniforms.uTint = { value: new THREE.Color(tint) };
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.position.set(x, (UPPER_TOP + UPPER_BOTTOM) / 2, -8);
+  m.rotation.z = angle;
+  return m;
+}
+
+const godrays = [
+  makeGodRay(-15,  0.30, 7, 60, 0xffd0a0),
+  makeGodRay(  4, -0.25, 9, 65, 0xc8e0ff),
+  makeGodRay( 22,  0.42, 6, 55, 0xffb0d8),
+];
+for (const r of godrays) scene.add(r);
+
 const lowerBg = new THREE.Mesh(
   new THREE.PlaneGeometry(200, LOWER_TOP - LOWER_BOTTOM),
   new THREE.MeshBasicMaterial({ color: 0x1a1614 })
@@ -839,6 +885,7 @@ function frame(now) {
     const pulse = 0.05 + 0.18 * (0.5 + 0.5 * Math.sin(now * 0.001 * m.pulseSpeed + m.pulseOffset));
     m.mesh.material.opacity = pulse;
   }
+  godrayMat.uniforms.uTime.value = now * 0.0004;
   auroraMat.uniforms.uTime.value = now * 0.0004;
   moteMat.uniforms.uTime.value = now * 0.0004;
   renderer.render(scene, camera);
